@@ -1,0 +1,308 @@
+--[[
+	WARNING: Heads up! This script has not been verified by ScriptBlox. Use at your own risk!
+]]
+-- // Services
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LocalPlayer = Players.LocalPlayer
+
+-- // UI Library
+local repo = 'https://raw.githubusercontent.com/VardySc/XternalNew/main/'
+local library = loadstring(game:HttpGet(repo .. 'Library.lua'))()
+local thememanager = loadstring(game:HttpGet(repo .. 'addons/ThemeManager.lua'))()
+local savemanager = loadstring(game:HttpGet(repo .. 'addons/SaveManager.lua'))()
+
+local game_name = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
+
+local window = library:CreateWindow({
+    Title = 'osg9 | ' .. game_name,
+    Center = true,
+    AutoShow = true,
+    Position = UDim2.new(0.5, -200, 0.5, -150),
+    Size = UDim2.new(0, 400, 0, 412)
+})
+
+local tabs = {
+    Aimbot = window:AddTab('Aimbot'),
+    Config = window:AddTab('Config')
+}
+
+local Aimbot = tabs.Aimbot:AddLeftGroupbox("Aimbot")
+local Mag = tabs.Aimbot:AddRightGroupbox("Reach")
+
+-- // FPS + Ping Watermark
+local FrameTimer = tick()
+local FrameCounter = 0
+local FPS = 60
+RunService.RenderStepped:Connect(function()
+    FrameCounter += 1
+    if (tick() - FrameTimer) >= 1 then
+        FPS = FrameCounter
+        FrameTimer = tick()
+        FrameCounter = 0
+    end
+    library:SetWatermark(('osg9 | %s fps | %s ms'):format(
+        math.floor(FPS),
+        math.floor(game:GetService('Stats').Network.ServerStatsItem['Data Ping']:GetValue())
+    ))
+end)
+
+-- // Camlock
+local CamlockEnabled = false
+local function Camlock()
+    local Player = LocalPlayer
+    local Character = Player.Character or Player.CharacterAdded:Wait()
+    local Camera = workspace.CurrentCamera
+    local Humanoid = Character:WaitForChild("Humanoid")
+
+    local function IsHoldingBasketball()
+        local Basketball = Character:FindFirstChild("Basketball")
+        return Basketball and Basketball:FindFirstChild("Ball")
+    end
+
+    local function GetGoal()
+        local Distance, Goal = math.huge, nil
+        local CharacterPosition = Character.PrimaryPart.Position  
+
+        local function CheckHoops(container)
+            if not container then return end
+            for _, court in ipairs(container:GetChildren()) do
+                for _, Obj in ipairs(court:GetDescendants()) do
+                    if Obj.Name == "Swish" and Obj.Parent:FindFirstChildOfClass("TouchTransmitter") then
+                        local HoopPosition = Obj.Parent.Position
+                        local Magnitude = (CharacterPosition - HoopPosition).Magnitude
+                        if Magnitude < Distance then
+                            Distance = Magnitude
+                            Goal = Obj.Parent
+                        end
+                    end
+                end
+            end
+        end
+
+        CheckHoops(workspace:FindFirstChild("Courts"))
+        CheckHoops(workspace:FindFirstChild("PracticeArea"))
+
+        return Goal, Distance
+    end
+
+    local function GetMobileArc(dist)
+        local baseArc = ({
+            [59] = 20, [60] = 20, [61] = 20, [62] = 20,
+            [63] = 18, [64] = 18, [65] = 18,
+            [66] = 15, [67] = 15,
+            [68] = 13, [69] = 13,
+            [70] = 10, [71] = 10
+        })[dist] or 8
+        return baseArc + 2
+    end
+
+    local function AdjustCameraForJump()
+        if not CamlockEnabled or not IsHoldingBasketball() then return end
+        
+        local Goal, Distance = GetGoal()
+        if Goal then
+            local ArcAdjustment = GetMobileArc(math.floor(Distance))
+            local BasketPosition = Goal.Position + Vector3.new(0, ArcAdjustment, 0)
+            local OldCFrame = Camera.CFrame
+            Player.DevEnableMouseLock = false
+            Camera.CFrame = CFrame.new(Player.Character.Head.Position, BasketPosition)
+            firesignal(Player.PlayerGui.Button.MouseButton1Click)
+            Camera.CFrame = OldCFrame
+            Player.DevEnableMouseLock = false
+        end
+    end
+
+    local function ResetCamera()
+        Camera.CameraType = Enum.CameraType.Custom
+    end
+
+    Humanoid.StateChanged:Connect(function(_, NewState)
+        if CamlockEnabled and NewState == Enum.HumanoidStateType.Jumping then
+            AdjustCameraForJump()
+        elseif NewState == Enum.HumanoidStateType.Landed then
+            ResetCamera()
+        end
+    end)
+end
+Camlock()
+
+-- // UI Toggle
+Aimbot:AddToggle('CamlockToggle', {
+    Text = 'Enable Camlock',
+    Default = false,
+    Tooltip = 'Locks camera to hoop when you jump with ball',
+    Callback = function(Value)
+        CamlockEnabled = Value
+    end
+})
+
+-- // Ball Grab
+local BallGrabEnabled = false
+local BallGrabDistance = 50
+local BallReach = { Distance = BallGrabDistance }
+local BallMags = { Distance = BallGrabDistance }
+
+local function GetClosestPart(Ball)
+    if LocalPlayer.Character then
+        local ClosestDistance = math.huge
+        local ClosestPart
+        for _, v in pairs(LocalPlayer.Character:GetChildren()) do
+            if v:IsA("BasePart") then
+                local Distance = (v.Position - Ball.Position).Magnitude
+                if Distance < ClosestDistance then
+                    ClosestDistance = Distance
+                    ClosestPart = v
+                end
+            end
+        end
+        return ClosestPart
+    end
+end
+
+function BallMags:GetClosestBall()
+    local ClosestBall
+    local ClosestDistance = math.huge
+    for _, obj in ipairs(workspace:GetChildren()) do
+        if obj.Name == "Basketball" and obj:FindFirstChild("Ball") then
+            local Ball = obj.Ball
+            local RootPart = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if Ball and RootPart then
+                local Distance = (Ball.Position - RootPart.Position).Magnitude
+                if Distance < self.Distance and Distance < ClosestDistance then
+                    ClosestBall = Ball
+                    ClosestDistance = Distance
+                end
+            end
+        end
+    end
+    return ClosestBall
+end
+
+function BallReach:GetClosestBall()
+    local ClosestBall
+    local ClosestDistance = math.huge
+    for _, Player in ipairs(Players:GetPlayers()) do
+        local Ball = Player.Character and Player.Character:FindFirstChild("Basketball") and Player.Character.Basketball:FindFirstChild("Ball")
+        local RootPart = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if Ball and RootPart then
+            local Distance = (Ball.Position - RootPart.Position).Magnitude
+            if Distance < self.Distance and Distance < ClosestDistance then
+                ClosestBall = Ball
+                ClosestDistance = Distance
+            end
+        end
+    end
+    return ClosestBall
+end
+
+RunService.RenderStepped:Connect(function()
+    if not BallGrabEnabled then return end
+
+    BallReach.Distance = BallGrabDistance
+    BallMags.Distance = BallGrabDistance
+
+    local MagsBall = BallMags:GetClosestBall()
+    local ReachBall = BallReach:GetClosestBall()
+    local Root1, Root2 = MagsBall and GetClosestPart(MagsBall), ReachBall and GetClosestPart(ReachBall)
+
+    if MagsBall and Root1 then
+        firetouchinterest(Root1, MagsBall, 0)
+        task.wait()
+        firetouchinterest(Root1, MagsBall, 1)
+    end
+
+    if ReachBall and Root2 then
+        firetouchinterest(Root2, ReachBall, 0)
+        task.wait()
+        firetouchinterest(Root2, ReachBall, 1)
+    end
+end)
+
+Mag:AddToggle('BallGrabToggle', {
+    Text = 'Enable Mag',
+    Default = false,
+    Tooltip = 'Automatically grab nearby balls',
+    Callback = function(Value)
+        BallGrabEnabled = Value
+    end
+})
+
+Mag:AddSlider('BallGrabSlider', {
+    Text = 'Mag distance',
+    Default = 50,
+    Min = 0,
+    Max = 150,
+    Rounding = 0,
+    Compact = false,
+    Callback = function(Value)
+        BallGrabDistance = Value
+    end
+})
+
+-- // Hide/Show UI Button
+local Ui22 = Instance.new("ScreenGui")
+Ui22.Name = "Ui22"
+Ui22.Parent = game.CoreGui
+Ui22.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+Ui22.ResetOnSpawn = false
+
+local Image3 = Instance.new("TextButton")
+Image3.Name = "Image3"
+Image3.Parent = Ui22
+Image3.Active = true
+Image3.Draggable = true
+Image3.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+Image3.BackgroundTransparency = 0.3
+Image3.Size = UDim2.new(0, 100, 0, 50)
+Image3.Position = UDim2.new(1, -150, 0, 20)
+Image3.Text = "Hide UI"
+Image3.TextColor3 = Color3.fromRGB(200, 200, 200)
+Image3.TextSize = 16
+Image3.Font = Enum.Font.Gotham
+Image3.BorderSizePixel = 0
+
+local Ui2corner = Instance.new("UICorner")
+Ui2corner.CornerRadius = UDim.new(0, 15)
+Ui2corner.Parent = Image3
+
+local UIStroke = Instance.new("UIStroke")
+UIStroke.Color = Color3.fromRGB(255, 255, 255)
+UIStroke.Thickness = 2
+UIStroke.Parent = Image3
+
+Image3.MouseEnter:Connect(function()
+    Image3.BackgroundTransparency = 0.1
+    UIStroke.Color = Color3.fromRGB(200, 200, 200)
+    Image3.TextColor3 = Color3.fromRGB(255, 255, 255)
+end)
+
+Image3.MouseLeave:Connect(function()
+    Image3.BackgroundTransparency = 0.3
+    UIStroke.Color = Color3.fromRGB(255, 255, 255)
+    Image3.TextColor3 = Color3.fromRGB(200, 200, 200)
+end)
+
+local Open = true
+Image3.MouseButton1Click:Connect(function()
+    Open = not Open
+    library:Toggle(Open)
+
+    if Open then
+        Image3.Text = "Hide UI"
+        Image3.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    else
+        Image3.Text = "Show UI"
+        Image3.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    end
+end)
+
+
+savemanager:SetLibrary(library)
+thememanager:SetLibrary(library)
+thememanager:SetFolder('camlock')
+savemanager:SetFolder('severe')
+thememanager:ApplyToTab(tabs.Config)
+savemanager:BuildConfigSection(tabs.Config)
