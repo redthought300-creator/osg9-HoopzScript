@@ -1,0 +1,365 @@
+-- Nova Hub by Astro
+-- Rayfield UI Basketball Script with Silent Aim, Camlock, Mags, Anti Travel & Autoguard
+
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+    Name = "Nova Hub | by Astro",
+    LoadingTitle = "Nova Hub Loading...",
+    LoadingSubtitle = "by Astro",
+    ConfigurationSaving = {
+        Enabled = true,
+        FolderName = nil,
+        FileName = "NovaHub"
+    },
+    Discord = {
+        Enabled = false,
+        Invite = "noinvitelink",
+        RememberJoins = true
+    },
+    KeySystem = false,
+})
+
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+
+-- Variables
+local SilentAimEnabled = false
+local CamlockEnabled = false
+local BallGrabEnabled = false
+local BallGrabDistance = 50
+local AntiTravelEnabled = false
+local AutoGuardEnabled = false
+
+-- Create Tabs
+local AimTab = Window:CreateTab("Silent Aim", 4483362458)
+local CamlockTab = Window:CreateTab("Camlock", 4483362458)
+local MagsTab = Window:CreateTab("Mags", 4483362458)
+local MiscTab = Window:CreateTab("Misc", 4483362458)
+
+-- Silent Aim Section
+local SilentAimSection = AimTab:CreateSection("Silent Aim")
+
+SilentAimSection:CreateToggle({
+    Name = "Enable Silent Aim",
+    CurrentValue = false,
+    Flag = "SilentAimToggle",
+    Callback = function(Value)
+        SilentAimEnabled = Value
+        if Value then
+            Rayfield:Notify({
+                Title = "Silent Aim",
+                Content = "Silent Aim Enabled",
+                Duration = 6.5,
+                Image = 4483362458,
+            })
+        end
+    end,
+})
+
+-- Silent Aim Functions
+local function GetClosestPlayerInFOV()
+    local ClosestPlayer = nil
+    local ClosestDistance = math.huge
+    
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local character = player.Character
+            local humanoidRootPart = character.HumanoidRootPart
+            
+            local screenPos, onScreen = workspace.CurrentCamera:WorldToViewportPoint(humanoidRootPart.Position)
+            if onScreen then
+                local distance = (humanoidRootPart.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude
+                if distance < ClosestDistance then
+                    ClosestDistance = distance
+                    ClosestPlayer = player
+                end
+            end
+        end
+    end
+    
+    return ClosestPlayer
+end
+
+-- Hook for Silent Aim
+local OldNameCall
+OldNameCall = hookmetamethod(game, "__namecall", function(Self, ...)
+    local Args = {...}
+    local Method = getnamecallmethod()
+    
+    if SilentAimEnabled and Method == "FireServer" then
+        local ClosestPlayer = GetClosestPlayerInFOV()
+        if ClosestPlayer and ClosestPlayer.Character and ClosestPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            Args[2] = ClosestPlayer.Character.HumanoidRootPart.Position
+        end
+    end
+    
+    return OldNameCall(Self, unpack(Args))
+end)
+
+-- Camlock Section
+local CamlockSection = CamlockTab:CreateSection("Camlock")
+
+CamlockSection:CreateToggle({
+    Name = "Enable Camlock",
+    CurrentValue = false,
+    Flag = "CamlockToggle",
+    Callback = function(Value)
+        CamlockEnabled = Value
+        if Value then
+            Rayfield:Notify({
+                Title = "Camlock",
+                Content = "Camlock Enabled",
+                Duration = 6.5,
+                Image = 4483362458,
+            })
+        end
+    end,
+})
+
+-- Camlock Functions
+local function Camlock()
+    local Player = LocalPlayer
+    local Character = Player.Character or Player.CharacterAdded:Wait()
+    local Camera = workspace.CurrentCamera
+    local Humanoid = Character:WaitForChild("Humanoid")
+
+    local function IsHoldingBasketball()
+        local Basketball = Character:FindFirstChild("Basketball")
+        return Basketball and Basketball:FindFirstChild("Ball")
+    end
+
+    local function GetGoal()
+        local Distance, Goal = math.huge, nil
+        local CharacterPosition = Character.PrimaryPart.Position  
+
+        local function CheckHoops(container)
+            if not container then return end
+            for _, court in ipairs(container:GetChildren()) do
+                for _, Obj in ipairs(court:GetDescendants()) do
+                    if Obj.Name == "Swish" and Obj.Parent:FindFirstChildOfClass("TouchTransmitter") then
+                        local HoopPosition = Obj.Parent.Position
+                        local Magnitude = (CharacterPosition - HoopPosition).Magnitude
+
+                        if Magnitude < Distance then
+                            Distance = Magnitude
+                            Goal = Obj.Parent
+                        end
+                    end
+                end
+            end
+        end
+
+        CheckHoops(workspace:FindFirstChild("Maps"))
+        CheckHoops(workspace:FindFirstChild("Spots"))
+
+        return Goal
+    end
+
+    if IsHoldingBasketball() and CamlockEnabled then
+        local Goal = GetGoal()
+        if Goal then
+            local Camera = workspace.CurrentCamera
+            local GoalPosition = Goal.Position
+            local CharacterPosition = Character.PrimaryPart.Position
+            
+            local Direction = (GoalPosition - CharacterPosition).Unit
+            local LookDirection = CFrame.lookAt(CharacterPosition, GoalPosition)
+            
+            Camera.CFrame = Camera.CFrame:Lerp(LookDirection, 0.1)
+        end
+    end
+end
+
+RunService.RenderStepped:Connect(Camlock)
+
+-- Mags Section
+local MagsSection = MagsTab:CreateSection("Ball Grab")
+
+MagsSection:CreateToggle({
+    Name = "Enable Ball Grab",
+    CurrentValue = false,
+    Flag = "BallGrabToggle",
+    Callback = function(Value)
+        BallGrabEnabled = Value
+        if Value then
+            Rayfield:Notify({
+                Title = "Ball Grab",
+                Content = "Ball Grab Enabled",
+                Duration = 6.5,
+                Image = 4483362458,
+            })
+        end
+    end,
+})
+
+MagsSection:CreateSlider({
+    Name = "Ball Grab Distance",
+    Range = {10, 100},
+    Increment = 1,
+    Suffix = " studs",
+    CurrentValue = 50,
+    Flag = "BallGrabDistance",
+    Callback = function(Value)
+        BallGrabDistance = Value
+    end,
+})
+
+-- Ball Grab Functions
+local BallReach = { Distance = BallGrabDistance }
+local BallMags = { Distance = BallGrabDistance }
+
+local function GetClosestPart(Ball)
+    if LocalPlayer.Character then
+        local ClosestDistance = math.huge
+        local ClosestPart
+        for _, v in pairs(LocalPlayer.Character:GetChildren()) do
+            if v:IsA("BasePart") then
+                local Distance = (v.Position - Ball.Position).Magnitude
+                if Distance < ClosestDistance then
+                    ClosestDistance = Distance
+                    ClosestPart = v
+                end
+            end
+        end
+        return ClosestPart
+    end
+end
+
+function BallMags:GetClosestBall()
+    local ClosestBall
+    local ClosestDistance = math.huge
+    for _, obj in ipairs(workspace:GetChildren()) do
+        if obj.Name == "Basketball" and obj:FindFirstChild("Ball") then
+            local Ball = obj.Ball
+            local RootPart = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if Ball and RootPart then
+                local Distance = (Ball.Position - RootPart.Position).Magnitude
+                if Distance < BallGrabDistance and Distance < ClosestDistance then
+                    ClosestBall = Ball
+                    ClosestDistance = Distance
+                end
+            end
+        end
+    end
+    return ClosestBall
+end
+
+function BallReach:GetClosestBall()
+    local ClosestBall
+    local ClosestDistance = math.huge
+    for _, Player in ipairs(Players:GetPlayers()) do
+        local Ball = Player.Character and Player.Character:FindFirstChild("Basketball") and Player.Character.Basketball:FindFirstChild("Ball")
+        local RootPart = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if Ball and RootPart then
+            local Distance = (Ball.Position - RootPart.Position).Magnitude
+            if Distance < BallGrabDistance and Distance < ClosestDistance then
+                ClosestBall = Ball
+                ClosestDistance = Distance
+            end
+        end
+    end
+    return ClosestBall
+end
+
+-- Ball Grab Logic
+RunService.Heartbeat:Connect(function()
+    if BallGrabEnabled then
+        local Ball = BallMags:GetClosestBall() or BallReach:GetClosestBall()
+        if Ball then
+            local ClosestPart = GetClosestPart(Ball)
+            if ClosestPart then
+                local BodyVelocity = Ball:FindFirstChild("BodyVelocity") or Instance.new("BodyVelocity")
+                BodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
+                BodyVelocity.Velocity = (ClosestPart.Position - Ball.Position).Unit * 100
+                BodyVelocity.Parent = Ball
+                
+                game:GetService("Debris"):AddItem(BodyVelocity, 0.1)
+            end
+        end
+    end
+end)
+
+-- Misc Section
+local MiscSection = MiscTab:CreateSection("Miscellaneous")
+
+MiscSection:CreateToggle({
+    Name = "Anti Travel",
+    CurrentValue = false,
+    Flag = "AntiTravelToggle",
+    Callback = function(Value)
+        AntiTravelEnabled = Value
+        if Value then
+            Rayfield:Notify({
+                Title = "Anti Travel",
+                Content = "Anti Travel Enabled",
+                Duration = 6.5,
+                Image = 4483362458,
+            })
+        end
+    end,
+})
+
+MiscSection:CreateToggle({
+    Name = "Auto Guard",
+    CurrentValue = false,
+    Flag = "AutoGuardToggle",
+    Callback = function(Value)
+        AutoGuardEnabled = Value
+        if Value then
+            Rayfield:Notify({
+                Title = "Auto Guard",
+                Content = "Auto Guard Enabled",
+                Duration = 6.5,
+                Image = 4483362458,
+            })
+        end
+    end,
+})
+
+-- Anti Travel Function
+local function AntiTravel()
+    if AntiTravelEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Basketball") then
+        local Ball = LocalPlayer.Character.Basketball:FindFirstChild("Ball")
+        if Ball then
+            Ball.CanCollide = false
+            Ball.Anchored = true
+            wait(0.1)
+            Ball.Anchored = false
+        end
+    end
+end
+
+-- Auto Guard Function
+local function AutoGuard()
+    if AutoGuardEnabled then
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Basketball") then
+                local distance = (player.Character.HumanoidRootPart.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude
+                if distance < 15 then
+                    VirtualInputManager:SendKeyEvent(true, "F", false, game)
+                    wait(0.1)
+                    VirtualInputManager:SendKeyEvent(false, "F", false, game)
+                end
+            end
+        end
+    end
+end
+
+-- Connect functions
+RunService.Heartbeat:Connect(AntiTravel)
+RunService.Heartbeat:Connect(AutoGuard)
+
+-- Success notification
+Rayfield:Notify({
+    Title = "Nova Hub Loaded",
+    Content = "All features have been successfully loaded!",
+    Duration = 6.5,
+    Image = 4483362458,
+})
+
+print("Nova Hub by Astro loaded successfully!")
